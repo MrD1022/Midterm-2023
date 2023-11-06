@@ -1,0 +1,289 @@
+---
+title: "disaster"
+author: "Mingrui Du"
+date: "2023-10-30"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#install.packages("rfema", repos = "https://ropensci.r-universe.dev")
+library(httr)
+library(jsonlite)
+library(rjson)
+library(rfema)
+suppressMessages(library(dplyr))
+library(tidyverse)
+library(stringr)
+library(maps)
+suppressMessages(library(plotly))
+suppressMessages(library(usmap))
+# library(ggmap)
+```
+
+## Data acquisition and assessment
+
+### Flood Data
+
+Two data sets obtained from [Federal Emergency Management Agency (FEMA)](https://www.fema.gov/about/openfema/data-sets), v1 containing financial assistance and v2 for all declared disasters. 
+
+[v1 (Fema Web Disaster Summaries)](https://www.fema.gov/openfema-data-page/fema-web-disaster-summaries-v1) is a 14-column, formatted data frame containing: sequential disaster number; total approved number of Individual Assistance (IA); approved amount($) for the Individual and Households Program (IHP), which includes Housing Assistance (HA) and Other Needs Assistance (ONA); amount of Public Assistance grant funding (PA) and [Hazard Mitigation Grant Program (HMGP)](https://www.fema.gov/grants/mitigation/hazard-mitigation). 
+
+[v2 (Disaster Declarations Summaries)](https://www.fema.gov/openfema-data-page/disaster-declarations-summaries-v2) contains disaster time, counties, incident type, disaster descriptions and assistance programs. Among these, column "declarationTitle" is a concatenation of all incidents included in one declared disaster. 
+
+Since the assignment focuses on year 2020-2021, the two data set will be filtered respectively for further investigation. 
+
+### CENSUS data
+
+The three files of CENSUS data posted on bb are originally obtained from [U.S. Census Bureau](https://www.census.gov/data/developers/data-sets/acs-5year.html), while [S1701](https://www.census.gov/acs/www/data/data-tables-and-tools/subject-tables/) stands for poverty status in the past 12 Months, [DP05](https://data.census.gov/table/ACSDP5Y2021.DP05) for demographic and housing estimates, [B25001](https://data.census.gov/table?q=B25001) for housing units. 
+
+### NOAA
+
+
+
+## Questions
+
+当地受灾情况与房屋数量关系: FEMA、CENSUS
+
+
+## Coding
+
+### Data Loading
+
+Data sets are read via local files and api. 
+
+```{r}
+## via API
+## Tutorial: https://www.fema.gov/about/openfema/api
+base_fema <- 'https://www.fema.gov/api/open/'
+version_2 <- 'v2/'
+entity <- 'DisasterDeclarationsSummaries'
+## select: 2020-2021, flood
+info_key <- "?$filter=incidentBeginDate%20ge%20'2020-01-01'%20and%20incidentBeginDate%20lt%20'2022-01-01'%20and%20incidentType%20eq%20'Flood'"
+url_fema <- paste0(base_fema, version_2, entity, info_key)
+rawd <- GET(url_fema)  
+raw_text <- content(rawd, as = "text", encoding = "UTF-8")
+df <- fromJSON(raw_text, flatten = TRUE)
+fema_v2 <- data.frame(df$DisasterDeclarationsSummaries)
+
+## via local files
+fema_v1 <- read.csv("FemaWebDisasterSummaries.csv", header = T)
+
+## S1701: Poverty
+pov_20 <- read.csv("ACSST5Y2020.S1701-Data.csv", header = T)
+pov_20 <- pov_20 %>% select_if(~ length(unique(.)) > 2)
+## all.equal(colnames(pov_20), colnames(pov_21))
+
+pov_21 <- read.csv("ACSST5Y2021.S1701-Data.csv", header = T)
+pov_21 <- pov_21 %>% select_if(~ length(unique(.)) > 2)
+
+
+## DP05: ACS DEMOGRAPHIC AND HOUSING ESTIMATES
+demo_20 <- read.csv("ACSDP5Y2020.DP05-Data.csv", header = T)
+demo_20 <- demo_20 %>% select_if(~ length(unique(.)) > 2)
+# demo_20 <- demo_20[, grepl("E$",colnames(demo_20))]
+# colnames(demo_20) <- unlist(demo_20[1, ])
+# demo_20 <- demo_20[-1,]
+#### preparation for splitting columns
+
+# colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("Estimate!!SEX AND AGE!!Total population", "SexAge_", x))
+# colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("Estimate!!RACE!!Total population", "RaceTotal_", x))
+# colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("RaceTotal_!!One race!!American Indian and Alaska Native", "IndianAlaska_", x))
+# colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("RaceTotal_!!One race!!Asian!!", "Asian_", x))
+# colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("RaceTotal_!!One race!!Native Hawaiian and Other Pacific Islander!!", "HwiPacific_", x))
+
+
+
+##colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("_!!", "_", x))
+
+
+demo_21 <- read.csv("ACSDP5Y2021.DP05-Data.csv", header = T)
+demo_21 <- demo_21 %>% select_if(~ length(unique(.)) > 2)
+# colnames(demo_21) <- unlist(demo_21[1, ])
+# demo_21 <- demo_21[-1,]
+
+
+## B25001: Housing Units
+haus_uni_20 <- read.csv("ACSDT5Y2020.B25001-Data.csv", header = T)
+haus_uni_20 <- haus_uni_20 %>% select_if(~ length(unique(.)) > 2)
+colnames(haus_uni_20) <- unlist(haus_uni_20[1, ])
+haus_uni_20 <- haus_uni_20[-1,]
+
+haus_uni_21 <- read.csv("ACSDT5Y2021.B25001-Data.csv", header = T)
+haus_uni_21 <- haus_uni_21 %>% select_if(~ length(unique(.)) > 2)
+colnames(haus_uni_21) <- unlist(haus_uni_21[1, ])
+haus_uni_21 <- haus_uni_21[-1,]
+
+
+
+
+```
+### Data Cleaning
+
+FEMA v1
+
+```{r}
+## v1
+fema_v1 <- fema_v1 %>%
+  select(-hash, -lastRefresh, -id)
+## select data by disaster number in v2: 
+fema_v1 <- fema_v1 |> 
+  semi_join(fema_v2, by = "disasterNumber")
+```
+
+FEMA v2: remove unused columns, split BeginDate, Area, DeclarationTitle then separate by year
+
+```{r}
+## v2
+fema_v2 <- fema_v2 %>%
+  select(-hash, -lastRefresh, -id, -femaDeclarationString) %>% 
+  select(iaProgramDeclared, where(~length(unique(.)) > 1))
+## 'iaProgramDeclared' in v2 is a single value col 
+## but I want to save it as a funding indicator
+
+fema_v2$County <- 
+
+## Split concatenation columns:
+### incidentBeginDate into Year, Month, Date
+fema_v2$incidentBeginDate <- as.character(fema_v2$incidentBeginDate)
+fema_v2$incidentBeginDate <- gsub("T00:00:00.000Z", "", fema_v2$incidentBeginDate)
+fema_v2 <- fema_v2 |>
+                separate_wider_delim(cols = incidentBeginDate,
+                                     delim = "-",
+                                     names = c("Year", 
+                                               "Month",     
+                                               "Date"))
+
+### declarationTitle
+fema_v2$declarationTitle <- gsub(", AND", ",", fema_v2$declarationTitle)
+fema_v2$declarationTitle <- gsub("AND ", ", ", fema_v2$declarationTitle)
+fema_v2$declarationTitle <- gsub("SEVERE, STORMS", "SEVERE STORMS", fema_v2$declarationTitle)
+### unique(grepl(" AND ", fema_v2$declarationTitle))
+fema_v2 <- fema_v2 |>
+                separate_wider_delim(cols = declarationTitle,
+                                     delim = ",",
+                                     names = c("temp1", 
+                                               "temp2",     
+                                               "temp3",
+                                               "temp4",
+                                               "temp5"),
+                                     too_many = "error",
+                                     too_few = "align_start")
+fema_v2 <- fema_v2 %>% mutate_at(vars(temp1:temp4), ~trimws(.))
+
+## create FIPS code column
+fema_v2$fips <- paste0(fema_v2$fipsStateCode, fema_v2$fipsCountyCode, sep = "")
+fema_v2$fips <- ifelse(grepl("000", fema_v2$fips), NA, fema_v2$fips)
+
+
+## Separate FEMA v2 by year 2020 and 2021
+fema_v2_20 <- fema_v2 %>% filter(Year == '2020')
+fema_v2_21 <- fema_v2 %>% filter(Year == '2021')
+
+```
+
+CENSUS: Split Census data sets by Estimates and Percent
+
+```{r}
+## census data
+## Poverty
+Area <- as.data.frame(pov_20$NAME)|>
+    separate_wider_delim(cols = `pov_20$NAME`,
+                         delim = ",",
+                         names = c("County","State"),
+                         too_few = "align_start",
+                         too_many = "error")
+Area[1,1] <- "County"
+Area[1,2] <- "State"
+Area$County <- trimws(Area$County)
+Area$State <- trimws(Area$State)
+## Divide Poverty Data
+pov_20 <- pov_20[, grepl("E$",colnames(pov_20))] ## Remove all non-estimate columns 
+pov_20_totl <- data.frame(Area, pov_20[ ,grepl("C01", colnames(pov_20))]) ## Total 
+pov_20_blo <- data.frame(Area, pov_20[ ,grepl("C02", colnames(pov_20))]) ## Below Poverty Level
+pov_20_blopc <- data.frame(Area, pov_20[ ,grepl("C03", colnames(pov_20))]) ## Percent of Blo
+
+## Replace col names by first row
+colnames(pov_20_totl) <- unlist(pov_20_totl[1, ])
+pov_20_totl <- pov_20_totl[-1,]
+
+## age
+colnames(pov_20_totl) <- sapply(colnames(pov_20_totl), function(x) gsub("Population for whom poverty status is determined!!AGE!!", "age_", x))
+colnames(pov_20_totl) <- sapply(colnames(pov_20_totl), function(x) gsub("Under 18 years!!", "", x))
+colnames(pov_20_totl) <- sapply(colnames(pov_20_totl), function(x) gsub("18 to 64 years!!", "", x))
+
+## Education
+colnames(pov_20_totl) <- sapply(colnames(pov_20_totl), function(x) gsub("Population for whom poverty status is determined!!EDUCATIONAL ATTAINMENT!!", "edu_", x))
+colnames(pov_20_totl) <- sapply(colnames(pov_20_totl), function(x) gsub("Population 25 years and over!!", "", x))
+
+## Employment
+colnames(pov_20_totl) <- sapply(colnames(pov_20_totl), function(x) gsub("Population for whom poverty status is determined!!EMPLOYMENT STATUS!!", "emp_", x))
+colnames(pov_20_totl) <- sapply(colnames(pov_20_totl), function(x) gsub("Civilian labor force 16 years and over!!", "", x))
+
+
+```
+
+
+split concatenation columns
+
+```{r}
+
+
+```
+
+```{r}
+## CENSUS
+cty_state <- function(c){
+  c <- c |> separate_wider_delim(cols = `Geographic Area Name`,
+                                 delim = ",",
+                                 names = c("County", 
+                                           "State"))
+  c$County <- trimws(c$County)
+  c$State <- trimws(c$State)
+  return(c)
+}
+pov_20 <- cty_state(pov_20); pov_21 <- cty_state(pov_21)
+#demo_20 <- cty_state(demo_20); demo_21 <- cty_state(demo_21)
+haus_uni_20 <- cty_state(haus_uni_20); haus_uni_21 <- cty_state(haus_uni_21)
+haus_uni_20$County <- gsub(" County", "", haus_uni_20$County)
+haus_uni_21$County <- gsub(" County", "", haus_uni_21$County)
+
+
+```
+
+## EDA
+
+```{r}
+## 1 fema & housing unit
+
+maps::county.fips %>%
+  as.tibble %>% 
+  extract(polyname, c("region", "subregion"), "^([^,]+),([^,]+)$") ->
+  dfips
+
+map_data("county") %>% 
+  left_join(dfips) ->
+  dall
+
+dall %>% 
+  mutate(is_example = fips %in% fema_v2$fips) %>% 
+  ggplot(aes(long, lat, group = group)) +
+  geom_polygon(aes(fill=is_example), color="gray70") +
+  coord_map()
+```
+
+
+## References
+
+[R FEMA](https://docs.ropensci.org/rfema/#installation)
+
+[NOAA Storm Events Database](https://www.ncdc.noaa.gov/stormevents/ftp.jsp)
+
+[OpenFEMA Data Sets](https://www.fema.gov/about/openfema/data-sets)
+
+[API in R](https://statisticsglobe.com/api-in-r)
+
+[ggmap](https://mapsplatform.google.com/)
