@@ -3,6 +3,7 @@ title: "Midterm MA615 2023"
 author: "Mingrui Du"
 date: "2023-11-06"
 output:
+  pdf_document: default
   html_document:
     df_print: paged
 ---
