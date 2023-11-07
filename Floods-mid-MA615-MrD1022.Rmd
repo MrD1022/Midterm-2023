@@ -1,7 +1,7 @@
 ---
 title: "disaster"
 author: "Mingrui Du"
-date: "2023-10-30"
+date: "2023-11-06"
 output: pdf_document
 ---
 
@@ -13,7 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 #install.packages("rfema", repos = "https://ropensci.r-universe.dev")
 library(httr)
 library(jsonlite)
-library(rjson)
+#library(rjson)
 library(rfema)
 suppressMessages(library(dplyr))
 library(tidyverse)
@@ -87,18 +87,6 @@ demo_20 <- demo_20 %>% select_if(~ length(unique(.)) > 2)
 # demo_20 <- demo_20[, grepl("E$",colnames(demo_20))]
 # colnames(demo_20) <- unlist(demo_20[1, ])
 # demo_20 <- demo_20[-1,]
-#### preparation for splitting columns
-
-# colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("Estimate!!SEX AND AGE!!Total population", "SexAge_", x))
-# colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("Estimate!!RACE!!Total population", "RaceTotal_", x))
-# colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("RaceTotal_!!One race!!American Indian and Alaska Native", "IndianAlaska_", x))
-# colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("RaceTotal_!!One race!!Asian!!", "Asian_", x))
-# colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("RaceTotal_!!One race!!Native Hawaiian and Other Pacific Islander!!", "HwiPacific_", x))
-
-
-
-##colnames(demo_20) <- sapply(colnames(demo_20), function(x) gsub("_!!", "_", x))
-
 
 demo_21 <- read.csv("ACSDP5Y2021.DP05-Data.csv", header = T)
 demo_21 <- demo_21 %>% select_if(~ length(unique(.)) > 2)
@@ -144,7 +132,7 @@ fema_v2 <- fema_v2 %>%
 ## 'iaProgramDeclared' in v2 is a single value col 
 ## but I want to save it as a funding indicator
 
-fema_v2$County <- 
+
 
 ## Split concatenation columns:
 ### incidentBeginDate into Year, Month, Date
@@ -177,6 +165,13 @@ fema_v2 <- fema_v2 %>% mutate_at(vars(temp1:temp4), ~trimws(.))
 ## create FIPS code column
 fema_v2$fips <- paste0(fema_v2$fipsStateCode, fema_v2$fipsCountyCode, sep = "")
 fema_v2$fips <- ifelse(grepl("000", fema_v2$fips), NA, fema_v2$fips)
+
+## Unify designatedArea (to match housing units data set)
+## Delete "(County)", and "()" for territories
+fema_v2$designatedArea <- as.character(fema_v2$designatedArea)
+fema_v2$designatedArea <- fema_v2$designatedArea |> 
+  str_replace_all(" \\(County\\)", "")
+fema_v2$designatedArea <- gsub("[()]", "", fema_v2$designatedArea)
 
 
 ## Separate FEMA v2 by year 2020 and 2021
@@ -245,7 +240,7 @@ cty_state <- function(c){
   c$State <- trimws(c$State)
   return(c)
 }
-pov_20 <- cty_state(pov_20); pov_21 <- cty_state(pov_21)
+#pov_20 <- cty_state(pov_20); pov_21 <- cty_state(pov_21)
 #demo_20 <- cty_state(demo_20); demo_21 <- cty_state(demo_21)
 haus_uni_20 <- cty_state(haus_uni_20); haus_uni_21 <- cty_state(haus_uni_21)
 haus_uni_20$County <- gsub(" County", "", haus_uni_20$County)
@@ -259,20 +254,89 @@ haus_uni_21$County <- gsub(" County", "", haus_uni_21$County)
 ```{r}
 ## 1 fema & housing unit
 
-maps::county.fips %>%
-  as.tibble %>% 
-  extract(polyname, c("region", "subregion"), "^([^,]+),([^,]+)$") ->
-  dfips
 
-map_data("county") %>% 
-  left_join(dfips) ->
-  dall
+dfips <- maps::county.fips %>%
+  as.tibble %>% 
+  extract(polyname, c("region", "subregion"), "^([^,]+),([^,]+)$")
+  
+
+dall <- map_data("county") %>% left_join(dfips)
+
 
 dall %>% 
-  mutate(is_example = fips %in% fema_v2$fips) %>% 
+  mutate(fld_place = fips %in% fema_v2$fips) %>% 
   ggplot(aes(long, lat, group = group)) +
-  geom_polygon(aes(fill=is_example), color="gray70") +
+  geom_polygon(aes(fill=fld_place), color="grey90") +
   coord_map()
+```
+
+```{r}
+## 2 Housing Units
+## add Housing Units info to fema_v2, matched by designatedArea and County
+fema_v2_20 <- fema_v2_20 %>% 
+  left_join(haus_uni_20, by = c("designatedArea"= "County"))
+## In 2021 FEMA v2, there are counties with reused names in several states.
+## Thus create dictionary between state abbreviation and full name.
+state_dict <- list(
+  AL = "Alabama",
+  AK = "Alaska",
+  AZ = "Arizona",
+  AR = "Arkansas",
+  CA = "California",
+  CO = "Colorado",
+  CT = "Connecticut",
+  DE = "Delaware",
+  FL = "Florida",
+  GA = "Georgia",
+  HI = "Hawaii",
+  ID = "Idaho",
+  IL = "Illinois",
+  IN = "Indiana",
+  IA = "Iowa",
+  KS = "Kansas",
+  KY = "Kentucky",
+  LA = "Louisiana",
+  ME = "Maine",
+  MD = "Maryland",
+  MA = "Massachusetts",
+  MI = "Michigan",
+  MN = "Minnesota",
+  MS = "Mississippi",
+  MO = "Missouri",
+  MT = "Montana",
+  NE = "Nebraska",
+  NV = "Nevada",
+  NH = "New Hampshire",
+  NJ = "New Jersey",
+  NM = "New Mexico",
+  NY = "New York",
+  NC = "North Carolina",
+  ND = "North Dakota",
+  OH = "Ohio",
+  OK = "Oklahoma",
+  OR = "Oregon",
+  PA = "Pennsylvania",
+  RI = "Rhode Island",
+  SC = "South Carolina",
+  SD = "South Dakota",
+  TN = "Tennessee",
+  TX = "Texas",
+  UT = "Utah",
+  VT = "Vermont",
+  VA = "Virginia",
+  WA = "Washington",
+  WV = "West Virginia",
+  WI = "Wisconsin",
+  WY = "Wyoming"
+)
+fema_v2_21$StFull <- state_dict[fema_v2_21$state]
+fema_v2_21 <- fema_v2_21 %>% 
+  left_join(haus_uni_21, by = c("designatedArea"= "County"))
+
+
+dall_2 <- dall
+
+dall_2 %>% left
 ```
 
 
